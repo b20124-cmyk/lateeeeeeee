@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>지각에~서~ 누가 돌아왔게~</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- Leaflet.js (오픈소스 지도 라이브러리) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body {
+            background-color: #fff1f2; 
+            color: #1e293b;
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #ffe4e6; }
+        ::-webkit-scrollbar-thumb { background: #f43f5e; border-radius: 3px; }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8 flex items-center justify-center">
+
+    <div class="w-full max-w-6xl bg-white border border-rose-100 rounded-2xl shadow-xl overflow-hidden grid grid-cols-1 lg:grid-cols-12">
+        
+        <!-- 왼쪽 제어판 -->
+        <div class="lg:col-span-5 p-6 border-b lg:border-b-0 lg:border-r border-rose-100 space-y-5 flex flex-col justify-between">
+            <div class="space-y-5">
+                <div>
+                    <h1 class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 via-rose-500 to-orange-400 flex items-center gap-2">
+                        ✨ 지각에~서~ 누가 돌아왔게~
+                    </h1>
+                    <p class="text-xs text-slate-500 mt-1">교통수단별 실제 보행/이동 속도를 반영한 리얼 타임 동기화</p>
+                </div>
+
+                <hr class="border-rose-100">
+
+                <!-- 1. 주소 검색 입력창 (상세 주소 제거) -->
+                <div class="space-y-4 bg-rose-50 p-4 rounded-xl border border-rose-100">
+                    <h3 class="text-xs font-bold text-rose-700 flex items-center gap-1">🔍 장소 및 주소 검색</h3>
+                    
+                    <div>
+                        <label class="block text-[11px] text-rose-500 mb-1 font-semibold">🏠 출발지 입력</label>
+                        <div class="flex gap-1.5">
+                            <input type="text" id="start-query" placeholder="예: 서울역" value="서울역" class="w-full bg-white border border-rose-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-pink-400">
+                            <button onclick="searchAddress('start')" class="bg-pink-500 hover:bg-pink-600 text-white text-xs font-bold px-4 rounded-lg transition shrink-0 cursor-pointer shadow-sm">검색</button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-[11px] text-rose-500 mb-1 font-semibold">⭐ 도착지 입력</label>
+                        <div class="flex gap-1.5">
+                            <input type="text" id="end-query" placeholder="예: 강남역" value="강남역" class="w-full bg-white border border-rose-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-pink-400">
+                            <button onclick="searchAddress('end')" class="bg-pink-500 hover:bg-pink-600 text-white text-xs font-bold px-4 rounded-lg transition shrink-0 cursor-pointer shadow-sm">검색</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. 시간 설정창 -->
+                <div class="bg-rose-50 p-4 rounded-xl border border-rose-100 space-y-3">
+                    <h3 class="text-xs font-bold text-rose-700">⏱️ 스케줄 시각 세팅</h3>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[11px] text-rose-500 mb-1">🏠 내가 출발할 시간</label>
+                            <input type="time" id="input-depart-time" value="08:20" onchange="updateRouteFromMap()" class="w-full bg-white border border-rose-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-pink-400">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] text-rose-500 mb-1">⭐ 꼭 도착해야 하는 시간</label>
+                            <input type="time" id="input-arrival-time" value="09:00" onchange="updateRouteFromMap()" class="w-full bg-white border border-rose-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-pink-400">
+                        </div>
+                    </div>
+                    <div class="text-[11px] text-rose-600 font-medium" id="time-window-info">
+                        허용된 총 여유 시간: 40분
+                    </div>
+                </div>
+
+                <!-- 3. 교통 수단 선택 -->
+                <div>
+                    <label class="block text-xs text-slate-600 mb-2 font-semibold">🚗 교통 수단 선택</label>
+                    <div class="grid grid-cols-2 gap-2" id="transport-grid">
+                        <button onclick="selectTransport('walk')" id="btn-walk" class="p-2.5 rounded-xl border border-slate-200 bg-white text-left text-xs hover:border-pink-400 transition text-slate-700 cursor-pointer">
+                            🚶 도보 전용 <span class="block text-[10px] text-slate-400">시속 4km 보행 + 횡단보도</span>
+                        </button>
+                        <button onclick="selectTransport('bike')" id="btn-bike" class="p-2.5 rounded-xl border border-slate-200 bg-white text-left text-xs hover:border-pink-400 transition text-slate-700 cursor-pointer">
+                            🚲 자전거 라이딩 <span class="block text-[10px] text-slate-400">자전거 도로 및 신호 대기</span>
+                        </button>
+                        <button onclick="selectTransport('public')" id="btn-public" class="p-2.5 rounded-xl border border-slate-200 bg-white text-left text-xs hover:border-pink-400 transition text-slate-700 cursor-pointer">
+                            🚌 대중교통 환승형 <span class="block text-[10px] text-slate-400">정류장 정차 + 버스 대기</span>
+                        </button>
+                        <button onclick="selectTransport('car')" id="btn-car" class="p-2.5 rounded-xl border border-slate-200 bg-white text-left text-xs hover:border-pink-400 transition text-slate-700 cursor-pointer">
+                            🚗 자동차/택시 내비 <span class="block text-[10px] text-slate-400">도심 현실 제한속도 반영</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 4. 실시간 예약 통계 안내판 -->
+                <div class="bg-pink-50 border border-pink-100 p-3.5 rounded-xl">
+                    <span class="text-[11px] font-bold text-pink-800 block" id="traffic-status-title">🚦 타임라인 도로 혼잡도 예측</span>
+                    <p id="traffic-status-desc" class="text-[11px] text-pink-700 mt-1 leading-relaxed">현실 보정 필터가 적용되어 내비게이션 시간이 실시간 동기화됩니다.</p>
+                </div>
+            </div>
+
+            <!-- 디스플레이 전용 지표 -->
+            <div class="grid grid-cols-2 gap-2 text-center bg-rose-50 p-2.5 rounded-xl border border-rose-100 text-xs">
+                <div class="border-r border-rose-200">
+                    <span class="text-[10px] text-slate-400 block">실제 도로 주행거리</span>
+                    <span id="txt-real-dist" class="font-bold text-slate-700">- km</span>
+                </div>
+                <div>
+                    <span class="text-[10px] text-slate-400 block">현실 이동 소요시간</span>
+                    <span id="txt-navi-time" class="font-bold text-pink-600">- 분</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 오른쪽 메인 화면 -->
+        <div class="lg:col-span-7 flex flex-col h-[550px] lg:h-auto bg-slate-100 relative">
+            <div id="map" class="w-full flex-1 bg-slate-200 z-0 relative"></div>
+
+            <div class="p-6 bg-white border-t border-rose-100 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                <div class="text-center md:text-left">
+                    <span class="text-[11px] text-slate-500 block uppercase tracking-wider font-semibold">종합 지각 확률</span>
+                    <div class="text-4xl font-black mt-1 text-slate-800" id="dash-probability">0%</div>
+                    <span class="text-[10px] px-2 py-0.5 rounded mt-1.5 inline-block font-bold" id="dash-status">대기 중</span>
+                </div>
+
+                <div class="text-xs space-y-1 text-slate-600 bg-rose-50 p-3 rounded-xl border border-rose-100 col-span-1">
+                    <div>⏱️ 이동 가능 시간: <span id="dash-calc-window" class="text-slate-800 font-bold">-</span></div>
+                    <div>🚗 최종 예측 소요: <span id="dash-calc-final" class="text-pink-600 font-bold">-</span></div>
+                    <div>⚠️ 추가 특이 지체: <span id="dash-calc-delay" class="text-red-500 font-bold">-</span></div>
+                </div>
+
+                <div>
+                    <button onclick="startAnimateSimulation()" class="w-full py-3 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white text-xs font-black rounded-xl transition shadow-md uppercase tracking-wider cursor-pointer">
+                        🎬 내비 경로 모의 주행
+                    </button>
+                    <div id="sim-log" class="mt-2 text-[10px] font-mono text-slate-600 h-10 overflow-y-auto px-2 py-1 rounded bg-rose-50 border border-rose-100">
+                        준비 완료! 위치를 검색해 주세요.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let map = null;
+        let currentTransport = 'car';
+        let startMarker = null;
+        let endMarker = null;
+        let routeGeoJSONLayer = null;
+        let animMarker = null;
+
+        let navDistanceKm = 0;
+        let navDurationMin = 0; 
+        let routeGeometryData = null; 
+
+        window.onload = function() {
+            map = L.map('map').setView([37.53, 126.98], 11);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap'
+            }).addTo(map);
+
+            const initStartPos = [37.5562, 126.9723]; // 서울역
+            const initEndPos = [37.5000, 127.0365];   // 강남역
+
+            // 🏠 집 이모티콘 마커 (출발지)
+            startMarker = L.marker(initStartPos, {
+                draggable: true,
+                icon: L.divIcon({
+                    html: `
+                    <div class="w-12 h-12 rounded-full border-2 border-pink-400 shadow-md bg-white flex items-center justify-center text-2xl">
+                        🏠
+                    </div>`,
+                    className: '', 
+                    iconSize: [48, 48], 
+                    iconAnchor: [24, 24]
+                })
+            }).addTo(map);
+
+            // ⭐ 별 이모티콘 마커 (도착지)
+            endMarker = L.marker(initEndPos, {
+                draggable: true,
+                icon: L.divIcon({
+                    html: `
+                    <div class="w-12 h-12 rounded-full border-2 border-rose-500 shadow-md bg-white flex items-center justify-center text-2xl">
+                        ⭐
+                    </div>`,
+                    className: '', 
+                    iconSize: [48, 48], 
+                    iconAnchor: [24, 24]
+                })
+            }).addTo(map);
+
+            startMarker.on('dragend', updateRouteFromMap);
+            endMarker.on('dragend', updateRouteFromMap);
+
+            selectTransport('car');
+        };
+
+        function searchAddress(type) {
+            const query = document.getElementById(`${type}-query`).value;
+            
+            if (!query) return alert("검색할 명칭이나 도로명 주소를 입력하세요.");
+
+            document.getElementById('sim-log').innerHTML = `<span class="text-pink-600 font-bold">[${query}]</span><br>위치 매핑 중... 📡`;
+
+            fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.length > 0) {
+                        const target = data[0];
+                        const latlng = [parseFloat(target.lat), parseFloat(target.lon)];
+
+                        if (type === 'start') {
+                            startMarker.setLatLng(latlng);
+                            document.getElementById('sim-log').innerHTML = `🏠 출발지: <span class="font-bold text-slate-700">${query}</span> 설정 완료!`;
+                        } else {
+                            endMarker.setLatLng(latlng);
+                            document.getElementById('sim-log').innerHTML = `⭐ 도착지: <span class="font-bold text-slate-700">${query}</span> 설정 완료!`;
+                        }
+                        
+                        map.setView(latlng, 13);
+                        updateRouteFromMap();
+                    } else {
+                        alert("주소를 찾지 못했습니다. 장소명을 조금 더 단순하게 적어보세요!");
+                        document.getElementById('sim-log').innerText = "❌ 검색 실패";
+                    }
+                }).catch(() => alert("네트워크 에러가 발생했습니다."));
+        }
+
+        function updateRouteFromMap() {
+            if (!startMarker || !endMarker) return;
+            
+            const start = startMarker.getLatLng();
+            const end = endMarker.getLatLng();
+            
+            const url = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
+            
+            fetch(url)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.routes && data.routes.length > 0) {
+                        const route = data.routes[0];
+                        
+                        const meters = route.distance;
+                        navDistanceKm = (meters / 1000).toFixed(1);
+                        routeGeometryData = route.geometry; 
+                        
+                        if (currentTransport === 'car') {
+                            let rawMinutes = route.duration / 60;
+                            navDurationMin = Math.round(rawMinutes * 2.65); 
+                        } else if (currentTransport === 'walk') {
+                            const walkSpeedPerMin = 71.6; 
+                            navDurationMin = Math.round((meters / walkSpeedPerMin) * 1.15);
+                        } else if (currentTransport === 'bike') {
+                            const bikeSpeedPerMin = 250;
+                            navDurationMin = Math.round((meters / bikeSpeedPerMin) * 1.2);
+                        } else if (currentTransport === 'public') {
+                            let rawMinutes = route.duration / 60;
+                            navDurationMin = Math.round(rawMinutes * 3.1 + 8); 
+                        }
+
+                        document.getElementById('txt-real-dist').innerText = `${navDistanceKm} km`;
+                        document.getElementById('txt-navi-time').innerText = `${navDurationMin} 분`;
+
+                        drawRealRouteLine(route.geometry);
+                        calculateProbability();
+                    }
+                })
+                .catch(err => {
+                    document.getElementById('sim-log').innerText = "❌ 내비게이션 라우팅 연동 오류";
+                });
+        }
+
+        function drawRealRouteLine(geometry) {
+            if (routeGeoJSONLayer) map.removeLayer(routeGeoJSONLayer);
+            routeGeoJSONLayer = L.geoJSON(geometry, {
+                style: { 
+                    color: currentTransport === 'walk' ? '#ec4899' : '#f43f5e', 
+                    weight: 5, 
+                    opacity: 0.85 
+                }
+            }).addTo(map);
+        }
+
+        function selectTransport(type) {
+            currentTransport = type;
+            document.querySelectorAll('#transport-grid button').forEach(btn => {
+                btn.className = "p-2.5 rounded-xl border border-slate-200 bg-white text-left text-xs text-slate-600 hover:border-pink-400 transition cursor-pointer";
+            });
+            const activeBtn = document.getElementById(`btn-${type}`);
+            if (activeBtn) {
+                activeBtn.className = "p-2.5 rounded-xl border-pink-500 bg-pink-50 text-left text-xs text-pink-700 font-bold transition cursor-pointer";
+            }
+            updateRouteFromMap();
+        }
+
+        function calculateProbability() {
+            const departTimeStr = document.getElementById('input-depart-time').value;
+            const arrivalTimeStr = document.getElementById('input-arrival-time').value;
+
+            if (!departTimeStr || !arrivalTimeStr || navDurationMin <= 0) return;
+
+            const [dHour, dMin] = departTimeStr.split(':').map(Number);
+            const [aHour, aMin] = arrivalTimeStr.split(':').map(Number);
+            
+            let availableTimeWindow = (aHour * 60 + aMin) - (dHour * 60 + dMin);
+            if (availableTimeWindow < 0) availableTimeWindow += 1440; 
+
+            document.getElementById('time-window-info').innerText = `내가 설정한 이동 여유 시간: 총 ${availableTimeWindow}분`;
+
+            let extraDelay = 0;
+            let trafficStatus = "🍏 기본 이동 조건 반영";
+            let trafficDesc = "선택하신 수단의 현실적인 속도와 연동 조건이 정상 세팅되었습니다.";
+
+            if (currentTransport === 'car' || currentTransport === 'public') {
+                if (dHour === 8 || (dHour === 9 && dMin <= 30)) {
+                    extraDelay = Math.round(navDurationMin * 0.4); 
+                    trafficStatus = "🚨 아침 출근길 피크 정체";
+                    trafficDesc = "출근 시간대 차량 쏠림으로 간선도로에 극심한 병목이 더해집니다.";
+                } else if (dHour === 18 || dHour === 19) {
+                    extraDelay = Math.round(navDurationMin * 0.35);
+                    trafficStatus = "🛑 저녁 퇴근길 혼잡 가중";
+                    trafficDesc = "퇴근 차량 행렬 가중으로 평소보다 정체가 심화됩니다.";
+                }
+            } else if (currentTransport === 'walk') {
+                trafficStatus = "🚶 뚜벅이 모드 활성화";
+                trafficDesc = "차는 막혀도 사람은 걷습니다! 정체 영향을 받지 않는 순수 도보 시간입니다.";
+            }
+
+            document.getElementById('traffic-status-title').innerText = `🚦 상태 분석: ${trafficStatus}`;
+            document.getElementById('traffic-status-desc').innerText = trafficDesc;
+
+            const finalCalculatedDuration = navDurationMin + extraDelay;
+            const margin = availableTimeWindow - finalCalculatedDuration;
+
+            let prob = 0;
+            if (margin < 0) {
+                prob = Math.min(100, 80 + Math.abs(margin) * 2.5);
+            } else if (margin < 8) {
+                prob = Math.round(55 - (margin * 5));
+            } else {
+                prob = Math.max(0, Math.round(15 * Math.exp(-margin / 12)));
+            }
+
+            const probText = document.getElementById('dash-probability');
+            const statusBadge = document.getElementById('dash-status');
+            
+            probText.innerText = `${prob}%`;
+            document.getElementById('dash-calc-window').innerText = `${availableTimeWindow}분`;
+            document.getElementById('dash-calc-final').innerText = `약 ${finalCalculatedDuration}분`;
+            document.getElementById('dash-calc-delay').innerText = extraDelay > 0 ? `+${extraDelay}분 추가정체` : '변동 없음';
+
+            if (prob < 25) {
+                probText.className = "text-4xl font-black mt-1 text-emerald-600";
+                statusBadge.innerText = "🍏 안정권 (지각 안함)";
+                statusBadge.className = "text-[10px] px-2 py-0.5 rounded mt-1.5 inline-block font-bold bg-emerald-100 text-emerald-700";
+            } else if (prob < 65) {
+                probText.className = "text-4xl font-black mt-1 text-amber-500";
+                statusBadge.innerText = "🟡 경고 (아슬아슬함)";
+                statusBadge.className = "text-[10px] px-2 py-0.5 rounded mt-1.5 inline-block font-bold bg-amber-100 text-amber-700";
+            } else {
+                probText.className = "text-4xl font-black mt-1 text-red-600";
+                statusBadge.innerText = "🚨 지각 확정 시그널";
+                statusBadge.className = "text-[10px] px-2 py-0.5 rounded mt-1.5 inline-block font-bold bg-red-100 text-red-700";
+            }
+        }
+
+        function startAnimateSimulation() {
+            if (!routeGeometryData) return alert("경로가 잡히지 않았습니다.");
+
+            const logBox = document.getElementById('sim-log');
+            logBox.innerHTML = "🚀 <span class='text-pink-600 font-bold'>모의 주행 애니메이션 구동 시작...</span>";
+            logBox.className = "mt-2 text-[10px] font-mono h-10 overflow-y-auto px-2 py-1 rounded bg-rose-50 border border-rose-200";
+
+            if (animMarker) map.removeLayer(animMarker);
+
+            const coords = routeGeometryData.coordinates.map(c => [c[1], c[0]]);
+            let iconHtml = currentTransport === 'car' ? '🚗' : currentTransport === 'public' ? '🚌' : currentTransport === 'bike' ? '🚲' : '🚶';
+
+            animMarker = L.marker(coords[0], {
+                icon: L.divIcon({html: `<div class="text-2xl animate-bounce">${iconHtml}</div>`, iconSize: [30, 30], iconAnchor: [15, 15]})
+            }).addTo(map);
+
+            let index = 0;
+            const totalSteps = coords.length;
+            
+            const timer = setInterval(() => {
+                if (index >= totalSteps) {
+                    clearInterval(timer);
+                    logBox.innerHTML = `🏁 <span class='text-pink-600 font-bold'>목적지 도착 완료!</span>`;
+                    setTimeout(() => { if (animMarker) map.removeLayer(animMarker); }, 2000);
+                } else {
+                    animMarker.setLatLng(coords[index]);
+                    if (index % 4 === 0) map.panTo(coords[index]);
+                    index++;
+                }
+            }, Math.max(15, 800 / totalSteps));
+        }
+    </script>
+</body>
+</html>
